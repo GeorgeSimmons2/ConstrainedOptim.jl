@@ -6,7 +6,7 @@
 # procedure. But maybe this is not a good idea, to be tested.
 #
 
-function optimize( F::DifferentiableFunction,
+function optimize( F::Any,
                    C::EqualityConstraint,
                    x0::AbstractVector;
                    iterations = 5000,
@@ -18,12 +18,21 @@ function optimize( F::DifferentiableFunction,
    # initialise
    al = AugmentedLagrangian(F, C, x0)
    eta = al.mu^(-0.1)
-   # TODO: this needs to distinguish whether F, C are DifferentiableFunction
-   # or TwiceDifferentiableFunction!!!!
-   ALobj = DifferentiableFunction( x_ -> evaluate(x_, al),
-                                   (x_,g_) -> gradient!(g_, x_, al),
-                                   (x_,g_) -> eval_and_grad!(g_, x_, al) )
-
+   # TODO: this needs to distinguish whether F, C are TwiceDifferentiableFunction!!!!
+   
+   function obj(x_)
+      return evaluate(x_, al)
+   end
+   
+   function grad!(g_, x_)
+      gradient!(g_, x_, al)
+   end
+   
+   function obj_and_grad!(g_, x_)
+      return eval_and_grad!(g_, x_, al)
+   end
+   
+   ALobj = Optim.OnceDifferentiable(obj, grad!, obj_and_grad!, copy(x0))
 
    x = copy(x0)
    iteration = 0
@@ -34,12 +43,12 @@ function optimize( F::DifferentiableFunction,
    while iteration < iterations
 
       # solve the sub-problem
-      options = OptimizationOptions(g_tol=g_tol, iterations=iterations - iteration, store_trace = true)
-      result = Optim.optimize(ALobj, x, Optimizer(), options)
+      result = Optim.optimize(ALobj, x, Optimizer(), 
+                              Optim.Options(g_tol=g_tol, iterations=iterations - iteration, store_trace = true))
       # TODO: unclear what to do if this step fails? it could still be ok after
       # we update the lagrange multipliers? For now just print a warning and continue.
       if !Optim.converged(result)
-         warn("an inner AL iteration has not converged")
+         @warn "an inner AL iteration has not converged"
          # return minimizer(result)
       end
 
@@ -52,7 +61,7 @@ function optimize( F::DifferentiableFunction,
 
       if verbose >= 1
          @printf(" %4d |  %1.4e   %1.4e   %1.2e   %1.2e\n",
-                  iteration, norm(x, Inf), nrm_g, al.mu, eta)
+                  iteration, norm(c, Inf), nrm_g, al.mu, eta)
       end
 
       if norm(c, Inf) < c_tol
@@ -65,13 +74,13 @@ function optimize( F::DifferentiableFunction,
          eta = al.mu^(-0.1)
       end
       if al.mu > 1e10
-         warn("something horrible is happening")
+         @warn "something horrible is happening"
          return x, al
       end
 
    end
 
    # iteration > iterations
-   warn("too many iterations in `ConstrainedOptim.optimize` ")
+   @warn "too many iterations in `ConstrainedOptim.optimize` "
    return x, al
 end

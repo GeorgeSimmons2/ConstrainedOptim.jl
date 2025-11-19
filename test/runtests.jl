@@ -1,7 +1,10 @@
-using ConstrainedOptim
+include("../src/ConstrainedOptim.jl")
+using .ConstrainedOptim
 COpt = ConstrainedOptim
 using Optim
-using Base.Test
+using Printf
+using LinearAlgebra
+using Test
 
 @testset "Finite Difference Testing" begin
     f(x) = x[1]^2 + x[2]^2 + x[2]^4
@@ -12,10 +15,34 @@ using Base.Test
     # the minimiser should be [0.0,0.0]
     x0 = [1.0, 0.0]
 
+    function f_fun(x)
+        return f(x)
+    end
+    
+    function g_fun!(storage, x)
+        copyto!(storage, df(x))
+    end
+    
+    function fg_fun!(storage, x)
+        g_fun!(storage, x)
+        return f_fun(x)
+    end
 
-    F = DifferentiableFunction(f, (x,g) -> copy!(g, df(x)) )
-    C = EqualityConstraint(c, (x,g) -> copy!(g, dc(x)) )
+    function c_fun(x)
+        return c(x)
+    end
+    
+    function dc_fun!(x, storage)
+        copyto!(storage, dc(x))
+    end
+    
+    function c_dc_fun!(storage, x)
+        dc_fun!(x, storage)
+        return c_fun(x)
+    end
 
+    F = Optim.OnceDifferentiable(f_fun, g_fun!, fg_fun!, copy(x0))
+    C = EqualityConstraint(c_fun, dc_fun!)
 
     println("------------------------------------------------------------")
     println("       Finite Difference Testing the AL ")
@@ -30,21 +57,21 @@ using Base.Test
     err = Float64[]
     for p = 2:12
        h = 0.1^p
-       dAh = zeros(dA)
+       dAh = similar(dA)
        for n = 1:length(x0)
           x0[n] += h
           dAh[n] = (COpt.evaluate(x0, al) - A)  / h
           x0[n] -= h
        end
-       push!(err, vecnorm(dA - dAh, Inf))
+       push!(err, norm(dA - dAh, Inf))
        @printf(" 1e-%2d |  %1.4e \n", p, err[end])
     end
     @test minimum(err) < 1e-4 * err[1]
     if minimum(err) < 1e-4 * err[1]
        println("looks like the FD test has passed...")
     else
-       warn("""the finite difference test for the augmented Lagrangien didn't
-             pass; please check visually what happened and debug""")
+       @warn """the finite difference test for the augmented Lagrangien didn't
+             pass; please check visually what happened and debug"""
     end
 
 
@@ -53,12 +80,12 @@ using Base.Test
     x, al = ConstrainedOptim.optimize(F, C, x0)
     println("Converged to ", x, "; λ = ", al.lambda)
     println("First-order optimality: ")
-    al.mu = 0.0; g = COpt.gradient(x, al); C = al.C.c(x)
+    al.mu = 0.0; g = COpt.gradient(x, al); c = C.c(x)
     println("   ∇ₓL(x, λ) = ", g)
-    println("        c(x) = ", C)
-    println("  |∇L(x, λ)| = ", max(vecnorm(g), vecnorm(C)))
-    @test vecnorm(g) < 1e-6
-    @test vecnorm(C) < 1e-6
+    println("        c(x) = ", c)
+    println("  |∇L(x, λ)| = ", max(norm(g), norm(c)))
+    @test norm(g) < 1e-6
+    @test norm(c) < 1e-6
     end
 
 # Another test case
@@ -70,8 +97,9 @@ using Base.Test
         ∇c(x) = ones(1,2)
         initial_x = [0.3,0.75]
         solution_x = [1/3, 2/3]
-        F = DifferentiableFunction(f, (x,g) -> copy!(g, ∇f(x)))
-        C = EqualityConstraint(c, (x,g) -> copy!(g, ∇c(x)) )
+        
+        F = Optim.OnceDifferentiable(f, (g, x) -> copyto!(g, ∇f(x)), (g, x) -> (copyto!(g, ∇f(x)); return f(x)), initial_x)
+        C = EqualityConstraint(c, (x,g) -> copyto!(g, ∇c(x)) )
 
         x, al = ConstrainedOptim.optimize(F, C, initial_x)
         @test norm(x - solution_x, Inf) < 1e-6
@@ -84,8 +112,9 @@ using Base.Test
         ∇c(x) = ones(1,2)
         initial_x = [2.0, 2.0]
         solution_x = [3.0, 3.0]
-        F = DifferentiableFunction(f, (x,g) -> copy!(g, ∇f(x)))
-        C = EqualityConstraint(c, (x,g) -> copy!(g, ∇c(x)) )
+        
+        F = Optim.OnceDifferentiable(f, (g, x) -> copyto!(g, ∇f(x)), (g, x) -> (copyto!(g, ∇f(x)); return f(x)), initial_x)
+        C = EqualityConstraint(c, (x,g) -> copyto!(g, ∇c(x)) )
 
         x, al = ConstrainedOptim.optimize(F, C, initial_x)
         @test norm(x - solution_x, Inf) < 1e-6
@@ -117,8 +146,8 @@ using Base.Test
         # Analytical solution
         solution_x = [(w[2]/w[1])*(γ[1]/γ[2])^(γ[2]/sum(γ))*q^(1/sum(γ));(w[1]/w[2])*(γ[2]/γ[1])^(γ[1]/sum(γ))*q^(1/sum(γ))]
 
-        F = DifferentiableFunction(f, (x,g) -> copy!(g, ∇f(x)))
-        C = EqualityConstraint(c, (x,g) -> copy!(g, ∇c(x)) )
+        F = Optim.OnceDifferentiable(f, (g, x) -> copyto!(g, ∇f(x)), (g, x) -> (copyto!(g, ∇f(x)); return f(x)), initial_x)
+        C = EqualityConstraint(c, (x,g) -> copyto!(g, ∇c(x)) )
 
         x, al = ConstrainedOptim.optimize(F, C, initial_x)
         @test norm(x - solution_x, Inf) < 1e-6
@@ -134,8 +163,8 @@ using Base.Test
             # Initial value is arbitrary...
             initial_x = [-0.3, -0.5]
             solution_x = [-1.0, -1.0]
-            F = DifferentiableFunction(f, (x,g) -> copy!(g, ∇f(x)))
-            C = EqualityConstraint(c, (x,g) -> copy!(g, ∇c(x)) )
+            F = Optim.OnceDifferentiable(f, (g, x) -> copyto!(g, ∇f(x)), (g, x) -> (copyto!(g, ∇f(x)); return f(x)), initial_x)
+            C = EqualityConstraint(c, (x,g) -> copyto!(g, ∇c(x)) )
 
             x, al = ConstrainedOptim.optimize(F, C, initial_x)
             @test norm(x - solution_x, Inf) < 1e-6
@@ -150,8 +179,8 @@ using Base.Test
             # Initial value is arbitrary...
             initial_x = [3., 0.5]
             solution_x = [1.0, 0.0]
-            F = DifferentiableFunction(f, (x,g) -> copy!(g, ∇f(x)))
-            C = EqualityConstraint(c, (x,g) -> copy!(g, ∇c(x)) )
+            F = Optim.OnceDifferentiable(f, (g, x) -> copyto!(g, ∇f(x)), (g, x) -> (copyto!(g, ∇f(x)); return f(x)), initial_x)
+            C = EqualityConstraint(c, (x,g) -> copyto!(g, ∇c(x)) )
 
             x, al = ConstrainedOptim.optimize(F, C, initial_x)
             @test norm(x - solution_x, Inf) < 1e-6
@@ -164,17 +193,22 @@ using Base.Test
               (1.0 / 2.0) * (x[1]^2 + eta * x[2]^2)
             end
 
-            function g_gd_2(x, storage)
+            function g_gd_2!(storage, x)
               storage[1] = x[1]
               storage[2] = eta * x[2]
             end
 
-            d = DifferentiableFunction(f_gd_2, g_gd_2)
+            function fg_gd_2!(storage, x)
+              g_gd_2!(storage, x)
+              return f_gd_2(x)
+            end
+
+            d = Optim.OnceDifferentiable(f_gd_2, g_gd_2!, fg_gd_2!, [1.0, 1.0])
             box_c = BoxConstraint(fill(-1.0, 2), fill(1.0, 2))
             ball_c = BallConstraint(fill(0.0, 2), 1.0, 2)
-            res_unc = Optim.optimize(d, [1.0, 1.0], GradientDescent(linesearch! = Optim.backtracking_linesearch!))
-            res_con_box = optimize(d, [1.0, 1.0], box_c, ProjectedGradientDescent(), OptimizationOptions())
-            res_con_ball = optimize(d, [1.0, 1.0], ball_c, ProjectedGradientDescent(), OptimizationOptions())
+            res_unc = Optim.optimize(d, [1.0, 1.0], Optim.GradientDescent())
+            res_con_box = optimize(d, [1.0, 1.0], box_c, ProjectedGradientDescent(), Optim.Options())
+            res_con_ball = optimize(d, [1.0, 1.0], ball_c, ProjectedGradientDescent(), Optim.Options())
 
             @test Optim.minimum(res_unc) == Optim.minimum(res_con_box) == Optim.minimum(res_con_ball)
         end

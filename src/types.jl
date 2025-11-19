@@ -1,17 +1,17 @@
-abstract Constraint
-abstract ConvexConstraint <: Constraint
-immutable BoxConstraint <: ConvexConstraint
+abstract type Constraint end
+abstract type ConvexConstraint <: Constraint end
+struct BoxConstraint <: ConvexConstraint
     lower
     upper
 end
 
-immutable BallConstraint <: ConvexConstraint
+struct BallConstraint <: ConvexConstraint
     center # center
     radius # radius
     p # l^p norm
 end
 
-immutable EqualityConstraint <: Constraint
+struct EqualityConstraint <: Constraint
     c
     Jc!
     cJc!
@@ -25,16 +25,18 @@ function EqualityConstraint(c, Jc!)
     return EqualityConstraint(c, Jc!, cJc!)
 end
 
-type AugmentedLagrangian{Tl<:Union{Real, Vector}}
-   F::DifferentiableFunction
+mutable struct AugmentedLagrangian{Tl<:Union{Real, Vector}}
+   f::Function
+   df::Function
+   fdf::Function
    C::EqualityConstraint
    lambda::Tl
    mu::Real
    Dc::Matrix
 end
 
-typealias AL AugmentedLagrangian
-function AugmentedLagrangian(F::DifferentiableFunction,
+const AL = AugmentedLagrangian
+function AugmentedLagrangian(F::Any,
                  C::EqualityConstraint,
                  x0::AbstractVector;
                  lambda=:auto, mu=10.0)
@@ -46,5 +48,12 @@ function AugmentedLagrangian(F::DifferentiableFunction,
    if lambda == :auto
       lambda = - mu * C0
    end
-   return AugmentedLagrangian(F, C, lambda, mu, zeros(dim_c, dim_x))
+   
+   # Extract function methods from OnceDifferentiable or similar
+   # If F is an OnceDifferentiable, use its methods
+   f = x -> F.f(x)
+   df = (g, x) -> F.df(g, x)
+   fdf = (g, x) -> F.fdf(g, x)
+   
+   return AugmentedLagrangian(f, df, fdf, C, lambda, mu, zeros(dim_c, dim_x))
 end

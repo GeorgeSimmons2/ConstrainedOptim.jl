@@ -9,17 +9,9 @@ struct ProjectedGradientDescent{T} <: AbstractOptimizer
     precondprep!::Function
 end
 
-function ProjectedGradientDescent()
-    # Default constructor with no arguments
-    linesearch_fn = (s, x, d, alpha, f, grad, normgrad) -> alpha
-    ProjectedGradientDescent(linesearch_fn, nothing, (P, x) -> nothing)
-end
-
-function ProjectedGradientDescent(; linesearch!::Union{Function, Nothing} = nothing,
+function ProjectedGradientDescent(; linesearch!::Function = nothing,
                 P = nothing, precondprep! = (P, x) -> nothing)
-    # Use a default if none provided
-    linesearch_fn = linesearch! === nothing ? (s, x, d, alpha, f, grad, normgrad) -> alpha : linesearch!
-    ProjectedGradientDescent(linesearch_fn, P, precondprep!)
+    ProjectedGradientDescent(linesearch! === nothing ? backtracking_linesearch : linesearch!, P, precondprep!)
 end
 
 # Stub functions for convex constraint optimization

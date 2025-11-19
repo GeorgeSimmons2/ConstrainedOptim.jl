@@ -2,7 +2,9 @@ module ConstrainedOptim
 
 
 using Optim
-import Optim: optimize, Optimizer, @add_generic_fields()
+using Printf
+using LinearAlgebra
+import Optim: optimize, AbstractOptimizer
 
 export EqualityConstraint, BoxConstraint, BallConstraint, ProjectedGradientDescent, optimize
 include("types.jl")
