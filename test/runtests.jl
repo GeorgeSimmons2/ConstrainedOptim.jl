@@ -6,6 +6,8 @@ using Printf
 using LinearAlgebra
 using Test
 
+@testset "ConstrainedOptim.jl Test Suite" begin
+
 @testset "Finite Difference Testing" begin
     f(x) = x[1]^2 + x[2]^2 + x[2]^4
     df(x) = [2*x[1], 2*x[2]+4*x[2]^3]
@@ -213,4 +215,6 @@ using Test
             @test Optim.minimum(res_unc) == Optim.minimum(res_con_box) == Optim.minimum(res_con_ball)
         end
     end
+end
+
 end
